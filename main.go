@@ -305,7 +305,7 @@ func main() {
 
 	gitlabOpts := make([]gitlab.ClientOptionFunc, 0)
 	if gitlabDomain != defaultGitlabDomain {
-		gitlabUrl := fmt.Sprintf("https://%s", gitlabDomain)
+		gitlabUrl := fmt.Sprintf("http://%s", gitlabDomain)
 		gitlabOpts = append(gitlabOpts, gitlab.WithBaseURL(gitlabUrl))
 	}
 	if gl, err = gitlab.NewClient(gitlabToken, gitlabOpts...); err != nil {
