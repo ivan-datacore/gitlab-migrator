@@ -29,8 +29,8 @@ const (
 	defaultGitlabDomain = "gitlab.com"
 )
 
-var loop, report bool
-var deleteExistingRepos, enablePullRequests, renameMasterToMain, skipInvalidMergeRequests, trimGithubBranches bool
+var loop, report, addTeam bool
+var deleteExistingRepos, enablePullRequests, renameMasterToMain, skipInvalidMergeRequests, trimGithubBranches, useOrg bool
 var githubDomain, githubRepo, githubToken, githubUser, gitlabDomain, gitlabProject, gitlabToken, projectsCsvPath, renameTrunkBranch string
 var mergeRequestsAge int
 
@@ -81,8 +81,9 @@ func main() {
 	}()
 
 	logger = hclog.New(&hclog.LoggerOptions{
-		Name:  "gitlab-migrator",
-		Level: hclog.LevelFromString(os.Getenv("LOG_LEVEL")),
+		Name: "gitlab-migrator",
+		//Level: hclog.LevelFromString(os.Getenv("LOG_LEVEL")),
+		Level: hclog.LevelFromString("DEBUG"),
 	})
 
 	cache = newObjectCache()
@@ -93,6 +94,7 @@ func main() {
 
 	flag.BoolVar(&loop, "loop", false, "continue migrating until canceled")
 	flag.BoolVar(&report, "report", false, "report on primitives to be migrated instead of beginning migration")
+	flag.BoolVar(&addTeam, "add-team", false, "add a team to existing GitHub repositories")
 
 	flag.BoolVar(&deleteExistingRepos, "delete-existing-repos", false, "whether existing repositories should be deleted before migrating")
 	flag.BoolVar(&enablePullRequests, "migrate-pull-requests", false, "whether pull requests should be migrated")
@@ -100,6 +102,7 @@ func main() {
 	flag.BoolVar(&skipInvalidMergeRequests, "skip-invalid-merge-requests", false, "when true, will log and skip invalid merge requests instead of raising an error")
 	flag.BoolVar(&trimGithubBranches, "trim-branches-on-github", false, "when true, will delete any branches on GitHub that are no longer present in GitLab")
 	flag.BoolVar(&showVersion, "version", false, "output version information")
+	flag.BoolVar(&useOrg, "use-org", false, "when creating repositories on GitHub, create them under an organization instead of the user account")
 
 	flag.StringVar(&githubDomain, "github-domain", defaultGithubDomain, "specifies the GitHub domain to use")
 	flag.StringVar(&githubRepo, "github-repo", "", "the GitHub repository to migrate to")
@@ -334,6 +337,14 @@ func main() {
 
 	if report {
 		printReport(ctx, projects)
+	} else if addTeam {
+		if err = addTeamToExistingRepos(ctx, projects); err != nil {
+			sendErr(err)
+			os.Exit(1)
+		} else if errCount > 0 {
+			logger.Warn(fmt.Sprintf("encountered %d errors adding team to existing repositories, review log output for details", errCount))
+			os.Exit(1)
+		}
 	} else {
 		if err = performMigration(ctx, projects); err != nil {
 			sendErr(err)
@@ -343,6 +354,28 @@ func main() {
 			os.Exit(1)
 		}
 	}
+}
+
+func addTeamToExistingRepos(ctx context.Context, projects []Project) error {
+	for _, slugs := range projects {
+		if err := ctx.Err(); err != nil {
+			return nil
+		}
+
+		proj, err := newProject(slugs)
+		if err != nil {
+			errCount++
+			sendErr(err)
+			continue
+		}
+
+		if err := proj.addTeamToRepo(ctx, "test_team"); err != nil {
+			errCount++
+			sendErr(err)
+		}
+	}
+
+	return nil
 }
 
 func printReport(ctx context.Context, projects []Project) {

@@ -23,6 +23,27 @@ import (
 	"github.com/xanzy/go-gitlab"
 )
 
+func (p *project) addTeamToRepo(ctx context.Context, team string) error {
+	slug := team
+	permission := "push"
+	if err := addTeamToExistingRepository(ctx, p.githubPath[0], p.githubPath[1], slug, permission); err != nil {
+		return fmt.Errorf("adding team to repo: %v", err)
+	}
+	return nil
+}
+
+func addTeamToExistingRepository(ctx context.Context, org, repo string, slug string, permission string) error {
+	logger.Info("adding team access to existing GitHub repository", "owner", org, "repo", repo, "team", slug, "permission", permission)
+	_, err := gh.Teams.AddTeamRepoBySlug(ctx, org, slug, org, repo, &github.TeamAddTeamRepoOptions{
+		Permission: permission, // pull, push, admin, maintain, or triage
+	})
+
+	if err != nil {
+		return fmt.Errorf("adding team to github repo: %v", err)
+	}
+	return nil
+}
+
 func newProject(slugs []string) (*project, error) {
 	var err error
 	p := &project{}
@@ -64,8 +85,9 @@ func (p *project) createRepo(ctx context.Context, homepage string, repoDeleted b
 	if repoDeleted {
 		logger.Warn("recreating GitHub repository", "owner", p.githubPath[0], "repo", p.githubPath[1])
 	} else {
-		logger.Debug("repository not found on GitHub, proceeding to create", "owner", p.githubPath[0], "repo", p.githubPath[1])
+		logger.Info("repository not found on GitHub, proceeding to create", "owner", p.githubPath[0], "repo", p.githubPath[1])
 	}
+	logger.Info("Creating GitHub repository", "owner", p.githubPath[0], "repo", p.githubPath[1], "all", p)
 	newRepo := github.Repository{
 		Name:          pointer(p.githubPath[1]),
 		Description:   &p.project.Description,
@@ -76,7 +98,11 @@ func (p *project) createRepo(ctx context.Context, homepage string, repoDeleted b
 		HasProjects:   pointer(true),
 		HasWiki:       pointer(true),
 	}
-	if _, _, err := gh.Repositories.Create(ctx, p.githubPath[0], &newRepo); err != nil {
+	organization := ""
+	if useOrg {
+		organization = p.githubPath[0]
+	}
+	if _, _, err := gh.Repositories.Create(ctx, organization, &newRepo); err != nil {
 		return fmt.Errorf("creating github repo: %v", err)
 	}
 
@@ -88,8 +114,12 @@ func (p *project) migrate(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("parsing clone URL: %v", err)
 	}
-
-	logger.Info("mirroring repository from GitLab to GitHub", "name", p.gitlabPath[1], "group", p.gitlabPath[0], "github_org", p.githubPath[0], "github_repo", p.githubPath[1])
+	logger.Info("path", p.githubPath)
+	userOrOrgLabel := "github_user"
+	if useOrg {
+		userOrOrgLabel = "github_organization"
+	}
+	logger.Info("mirroring repository from GitLab to GitHub", "name", p.gitlabPath[1], "group", p.gitlabPath[0], userOrOrgLabel, p.githubPath[0], "github_repo", p.githubPath[1])
 
 	logger.Debug("checking for existing repository on GitHub", "owner", p.githubPath[0], "repo", p.githubPath[1])
 	_, _, err = gh.Repositories.Get(ctx, p.githubPath[0], p.githubPath[1])
@@ -108,13 +138,15 @@ func (p *project) migrate(ctx context.Context) error {
 		}
 	} else if deleteExistingRepos {
 		logger.Warn("existing repository was found on GitHub, proceeding to delete", "owner", p.githubPath[0], "repo", p.githubPath[1])
-		if _, err = gh.Repositories.Delete(ctx, p.githubPath[0], p.githubPath[1]); err != nil {
-			return fmt.Errorf("deleting existing github repo: %v", err)
-		}
+		// if _, err = gh.Repositories.Delete(ctx, p.githubPath[0], p.githubPath[1]); err != nil {
+		// 	return fmt.Errorf("deleting existing github repo: %v", err)
+		// }
 
-		if err = p.createRepo(ctx, homepage, true); err != nil {
-			return err
-		}
+		// if err = p.createRepo(ctx, homepage, true); err != nil {
+		// 	return err
+		// }
+		logger.Warn("aborting migration")
+		return nil
 	}
 
 	logger.Debug("updating repository settings", "owner", p.githubPath[0], "repo", p.githubPath[1])
