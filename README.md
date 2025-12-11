@@ -31,6 +31,8 @@ gitlab-migrator -github-user=mytokenuser -gitlab-project=mygitlabuser/myproject 
 Written in Go, this is a cross-platform CLI utility that accepts the following runtime arguments:
 
 ```
+  -add-team string
+        runs the tool in *adding team mode* (**no migration**). Assign the given team to the given existing repositories in GitHub.
   -delete-existing-repos
         whether existing repositories should be deleted before migrating
   -github-domain string

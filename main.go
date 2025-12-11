@@ -29,9 +29,9 @@ const (
 	defaultGitlabDomain = "gitlab.com"
 )
 
-var loop, report, addTeam bool
+var loop, report bool
 var deleteExistingRepos, enablePullRequests, renameMasterToMain, skipInvalidMergeRequests, trimGithubBranches, useOrg bool
-var githubDomain, githubRepo, githubToken, githubUser, gitlabDomain, gitlabProject, gitlabToken, projectsCsvPath, renameTrunkBranch string
+var githubDomain, githubRepo, githubToken, githubUser, gitlabDomain, gitlabProject, gitlabToken, projectsCsvPath, renameTrunkBranch, addTeam string
 var mergeRequestsAge int
 
 var (
@@ -94,7 +94,6 @@ func main() {
 
 	flag.BoolVar(&loop, "loop", false, "continue migrating until canceled")
 	flag.BoolVar(&report, "report", false, "report on primitives to be migrated instead of beginning migration")
-	flag.BoolVar(&addTeam, "add-team", false, "add a team to existing GitHub repositories")
 
 	flag.BoolVar(&deleteExistingRepos, "delete-existing-repos", false, "whether existing repositories should be deleted before migrating")
 	flag.BoolVar(&enablePullRequests, "migrate-pull-requests", false, "whether pull requests should be migrated")
@@ -102,7 +101,7 @@ func main() {
 	flag.BoolVar(&skipInvalidMergeRequests, "skip-invalid-merge-requests", false, "when true, will log and skip invalid merge requests instead of raising an error")
 	flag.BoolVar(&trimGithubBranches, "trim-branches-on-github", false, "when true, will delete any branches on GitHub that are no longer present in GitLab")
 	flag.BoolVar(&showVersion, "version", false, "output version information")
-	flag.BoolVar(&useOrg, "use-org", false, "when creating repositories on GitHub, create them under an organization instead of the user account")
+	flag.BoolVar(&useOrg, "use-org", true, "when creating repositories on GitHub, create them under an organization instead of the user account")
 
 	flag.StringVar(&githubDomain, "github-domain", defaultGithubDomain, "specifies the GitHub domain to use")
 	flag.StringVar(&githubRepo, "github-repo", "", "the GitHub repository to migrate to")
@@ -112,6 +111,7 @@ func main() {
 	flag.StringVar(&projectsCsvPath, "projects-csv", "", "specifies the path to a CSV file describing projects to migrate (incompatible with -gitlab-project and -github-repo)")
 	flag.StringVar(&mergeRequestsAgeRaw, "merge-requests-max-age", "", "optional maximum age in days of merge requests to migrate")
 	flag.StringVar(&renameTrunkBranch, "rename-trunk-branch", "", "specifies the new trunk branch name (incompatible with -rename-master-to-main)")
+	flag.StringVar(&addTeam, "add-team", "", "add a team to existing GitHub repositories")
 
 	flag.IntVar(&maxConcurrency, "max-concurrency", 4, "how many projects to migrate in parallel")
 
@@ -337,7 +337,7 @@ func main() {
 
 	if report {
 		printReport(ctx, projects)
-	} else if addTeam {
+	} else if addTeam != "" {
 		if err = addTeamToExistingRepos(ctx, projects); err != nil {
 			sendErr(err)
 			os.Exit(1)
@@ -368,8 +368,8 @@ func addTeamToExistingRepos(ctx context.Context, projects []Project) error {
 			sendErr(err)
 			continue
 		}
-
-		if err := proj.addTeamToRepo(ctx, "test_team"); err != nil {
+		teamName := addTeam
+		if err := proj.addTeamToRepo(ctx, teamName); err != nil {
 			errCount++
 			sendErr(err)
 		}
